@@ -39,6 +39,11 @@ export function applyImportedTrades({ holdings, activity, fx }, rows) {
   const hs = holdings.map((h) => ({ ...h }))
   const notes = []
   const txnsToAdd = []
+  // Net cash contributed/withdrawn by imported deposits & withdrawals — folded into
+  // the activity's contribution totals so derived cash + TFSA room stay correct.
+  let contribTotalDelta = 0
+  let contribYearDelta = 0
+  const latestYear = activity?.latestYear || String(new Date().getFullYear())
 
   // Skip rows that exactly match a transaction already on file — gates BOTH the
   // holdings adjustment and the transaction, so applying the same screenshot twice
@@ -49,10 +54,30 @@ export function applyImportedTrades({ holdings, activity, fx }, rows) {
 
   for (const r of rows) {
     const amt = round2(Math.abs(Number(r.amount) || 0))
-    if (!r.symbol || !amt) continue
-    const k = key(r.date, r.type, r.symbol, amt)
+    const isCash = r.type === 'deposit' || r.type === 'withdrawal'
+    if ((!r.symbol && !isCash) || !amt) continue
+    const k = key(r.date, r.type, r.symbol || '', amt)
     if (seen.has(k)) continue
     seen.add(k)
+
+    // Deposits / withdrawals (e-transfers in/out) don't touch holdings — they move
+    // the contribution total, which is what derives cash and TFSA room.
+    if (isCash) {
+      const signed = r.type === 'deposit' ? amt : -amt
+      contribTotalDelta += signed
+      if (r.date.slice(0, 4) === latestYear) contribYearDelta += signed
+      txnsToAdd.push({
+        date: r.date,
+        type: r.type,
+        symbol: '',
+        amount: signed,
+        description: `${r.type === 'deposit' ? 'Deposit / transfer in' : 'Withdrawal / transfer out'} · from screenshot`,
+        commission: 0,
+        source: 'screenshot',
+      })
+      continue
+    }
+
     const idx = hs.findIndex((h) => h.symbol === r.symbol)
 
     if (r.type === 'buy') {
@@ -116,7 +141,14 @@ export function applyImportedTrades({ holdings, activity, fx }, rows) {
     accountsUsed: [],
     latestYear: null,
   }
-  const newActivity = { ...baseActivity, transactions: merged }
+  const newActivity = {
+    ...baseActivity,
+    transactions: merged,
+    contributionsTotal: round2((baseActivity.contributionsTotal || 0) + contribTotalDelta),
+    contributionsThisYear: round2((baseActivity.contributionsThisYear || 0) + contribYearDelta),
+    cashFromActivity: round2((baseActivity.cashFromActivity || 0) + contribTotalDelta),
+    latestYear: baseActivity.latestYear || latestYear,
+  }
 
   return { holdings: hs, activity: newActivity, notes }
 }

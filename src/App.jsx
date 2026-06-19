@@ -225,7 +225,7 @@ export default function App() {
     setAsOf(todayStr())
     const n = rows.length
     setNote(
-      `✅ Imported ${n} trade${n === 1 ? '' : 's'} from your screenshot — recent activity, cash & allocation updated.` +
+      `✅ Imported ${n} item${n === 1 ? '' : 's'} (trades + transfers) from your screenshot — recent activity, cash, contributions & allocation updated.` +
         (notes.length ? ' ' + notes.join(' ') : '') +
         ' New positions show as “est.” until you upload a holdings-report CSV (which fills in exact shares & price).',
     )

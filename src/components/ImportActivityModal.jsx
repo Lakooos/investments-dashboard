@@ -88,14 +88,17 @@ export default function ImportActivityModal({ open, onClose, onApply, existingTx
       mkRow({ date: new Date().toISOString().slice(0, 10), type: 'buy', symbol: '', amount: null, currency: 'CAD', needsAmount: true }),
     ])
 
-  const selected = rows.filter((r) => r.import && r.symbol.trim() && parseFloat(r.amount) > 0)
+  const isCash = (t) => t === 'deposit' || t === 'withdrawal'
+  // A trade needs a symbol; a deposit/withdrawal doesn't. Both need a positive amount.
+  const valid = (r) => r.import && parseFloat(r.amount) > 0 && (isCash(r.type) || r.symbol.trim())
+  const selected = rows.filter(valid)
 
   function apply() {
     onApply(
       selected.map((r) => ({
         date: r.date,
         type: r.type,
-        symbol: r.symbol.trim().toUpperCase(),
+        symbol: isCash(r.type) ? '' : r.symbol.trim().toUpperCase(),
         amount: parseFloat(r.amount),
         currency: r.currency,
       })),
@@ -187,10 +190,18 @@ export default function ImportActivityModal({ open, onClose, onApply, existingTx
                           <select value={r.type} onChange={(e) => setField(r.id, 'type', e.target.value)}>
                             <option value="buy">buy</option>
                             <option value="sell">sell</option>
+                            <option value="deposit">deposit</option>
+                            <option value="withdrawal">withdrawal</option>
                           </select>
                         </td>
                         <td>
-                          <input className="rv-sym" value={r.symbol} onChange={(e) => setField(r.id, 'symbol', e.target.value.toUpperCase())} />
+                          <input
+                            className="rv-sym"
+                            value={r.symbol}
+                            placeholder={isCash(r.type) ? '—' : ''}
+                            disabled={isCash(r.type)}
+                            onChange={(e) => setField(r.id, 'symbol', e.target.value.toUpperCase())}
+                          />
                         </td>
                         <td className="r">
                           <input

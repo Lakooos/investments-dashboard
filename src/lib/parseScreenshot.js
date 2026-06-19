@@ -60,6 +60,18 @@ function tradeType(line) {
   return null
 }
 
+// Cash movements with NO ticker — money in/out of the account (e-transfers,
+// deposits, contributions, withdrawals). Returns 'deposit' | 'withdrawal' | null.
+// Checked only on a line that ISN'T a ticker, so it never shadows a trade.
+function cashType(line) {
+  const l = line.toLowerCase()
+  if (/withdraw|transfer out|sent|outgoing|moved out|transfer to bank/.test(l)) return 'withdrawal'
+  if (/direct deposit|\bdeposit\b|contribution|transfer in|received|incoming|e-?transfer|\btransfer\b|top ?up|funded|added funds/.test(l)) {
+    return 'deposit'
+  }
+  return null
+}
+
 // Pull a dollar amount out of a line, recovering common OCR mangling.
 // "$323.86 CAD" -> 323.86 ; "1,321.18 CAD" -> 1321.18 ; "s132097CAD" -> 1320.97.
 function amountIn(line) {
@@ -84,6 +96,7 @@ export function parseActivityText(text, now = new Date()) {
 
   let currentDate = toISO(now)
   const rows = []
+  const isEntryStart = (line) => tickerOnly(line) || cashType(line)
 
   for (let i = 0; i < lines.length; i++) {
     // Date headers move the cursor and are never tickers.
@@ -93,23 +106,28 @@ export function parseActivityText(text, now = new Date()) {
       continue
     }
     const sym = tickerOnly(lines[i])
-    if (!sym) continue
+    // A ticker means a trade; otherwise a deposit/withdrawal keyword starts a
+    // cash-movement entry (e-transfer in/out of the account).
+    const cash = sym ? null : cashType(lines[i])
+    if (!sym && !cash) continue
 
-    // Gather this holding's block: the lines after the ticker, up to the next
-    // ticker or date header — the amount and buy/sell label live in here.
+    // Gather this entry's block: the lines after it, up to the next entry start
+    // (ticker / cash title) or date header — amount + label live in here.
     const block = []
     let j = i + 1
     for (; j < lines.length; j++) {
-      if (dateHeader(lines[j], now) || tickerOnly(lines[j])) break
+      if (dateHeader(lines[j], now) || isEntryStart(lines[j])) break
       block.push(lines[j])
     }
     i = j - 1 // resume at the line that ended the block
 
+    // For a cash entry the amount can sit on the title line itself, so scan it too.
+    const scan = sym ? block : [lines[i], ...block]
     let type = null
     let amount = null
     let currency = 'CAD'
-    for (const bl of block) {
-      if (!type) type = tradeType(bl)
+    for (const bl of scan) {
+      if (!type) type = sym ? tradeType(bl) : null
       if (amount == null) {
         const a = amountIn(bl)
         if (a != null) {
@@ -119,17 +137,28 @@ export function parseActivityText(text, now = new Date()) {
       }
     }
 
-    // Only emit if the block actually looked like a transaction (had a type or an
-    // amount) — filters stray all-caps lines that aren't really trades.
-    if (type == null && amount == null) continue
-    rows.push({
-      date: currentDate,
-      type: type || 'buy', // sensible default; user can flip it
-      symbol: sym,
-      amount,
-      currency,
-      needsAmount: amount == null,
-    })
+    if (sym) {
+      // Only emit a trade if the block looked like one (had a type or an amount) —
+      // filters stray all-caps lines that aren't really trades.
+      if (type == null && amount == null) continue
+      rows.push({
+        date: currentDate,
+        type: type || 'buy', // sensible default; user can flip it
+        symbol: sym,
+        amount,
+        currency,
+        needsAmount: amount == null,
+      })
+    } else {
+      rows.push({
+        date: currentDate,
+        type: cash, // 'deposit' | 'withdrawal'
+        symbol: '', // cash movement — no ticker
+        amount,
+        currency,
+        needsAmount: amount == null,
+      })
+    }
   }
   return rows
 }
@@ -149,7 +178,7 @@ export function markDuplicates(rows, existingTxns = []) {
         dup = true
         break
       }
-      if (r.amount == null) hint = `already a ${r.symbol} ${r.type} on ${t.date} ($${existAmt.toFixed(2)})`
+      if (r.amount == null) hint = `already a ${r.symbol || 'cash'} ${r.type} on ${t.date} ($${existAmt.toFixed(2)})`
     }
     return { ...r, isDuplicate: dup, dupHint: hint }
   })
