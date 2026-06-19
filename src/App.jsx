@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import AllocationPie from './components/AllocationPie.jsx'
+import ImportActivityModal from './components/ImportActivityModal.jsx'
 import { buildSnapshot, buildPrompt, copyAndDownload } from './lib/aiBridge.js'
 import { enrich, summarize, recommend, sellOutcome, selectPinnedRules } from './lib/portfolio.js'
+import { applyImportedTrades } from './lib/importTrades.js'
 import { parseHoldingsCsv, parseActivityCsv, detectCsvKind } from './lib/parseCsv.js'
 import { loadHistory, prevEntry, computeTodayChange, recordToday, todayStr } from './lib/history.js'
 import { SEED_HOLDINGS, DEFAULT_FX, PROFILE, AS_OF } from './data/holdings.js'
@@ -51,6 +53,7 @@ export default function App() {
   const [note, setNote] = useState('')
   const [pbLevel, setPbLevel] = useState('all') // playbook level filter: all | beginner | ...
   const [pbSeed, setPbSeed] = useState(0) // bump to rotate to the next batch of tips
+  const [importOpen, setImportOpen] = useState(false) // "Paste activity screenshot" modal
   const fileRef = useRef(null)
 
   // Cash auto-derives from stored activity + current holdings unless manually overridden.
@@ -210,6 +213,24 @@ export default function App() {
     setNote([...ok, ...errs].join(' · ') + cashNote)
   }
 
+  // Merge trades scraped from a pasted Activity screenshot. Updates holdings book
+  // values (so cash re-derives), records the transactions, and re-derives cash.
+  function onImportTrades(rows) {
+    setImportOpen(false)
+    if (!rows.length) return
+    const { holdings: h2, activity: a2, notes } = applyImportedTrades({ holdings, activity, fx }, rows)
+    setHoldings(h2)
+    setActivity(a2)
+    setCashOverride(null) // re-derive cash from the updated book values
+    setAsOf(todayStr())
+    const n = rows.length
+    setNote(
+      `✅ Imported ${n} trade${n === 1 ? '' : 's'} from your screenshot — recent activity, cash & allocation updated.` +
+        (notes.length ? ' ' + notes.join(' ') : '') +
+        ' New positions show as “est.” until you upload a holdings-report CSV (which fills in exact shares & price).',
+    )
+  }
+
   return (
     <div className="wrap">
       <header className="topbar">
@@ -240,9 +261,17 @@ export default function App() {
           </label>
           <button onClick={() => fileRef.current?.click()}>Upload CSV(s)</button>
           <input ref={fileRef} type="file" accept=".csv" multiple hidden onChange={onFiles} />
+          <button onClick={() => setImportOpen(true)} title="Paste a screenshot of your Wealthsimple Activity list to catch up trades the CSV export hasn't included yet">📋 Paste activity</button>
           <button className="primary" onClick={genRecs}>✨ Generate recommendations</button>
         </div>
       </header>
+
+      <ImportActivityModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onApply={onImportTrades}
+        existingTxns={activity?.transactions || []}
+      />
 
       {note && <div className="note">{note}</div>}
 
@@ -365,10 +394,15 @@ export default function App() {
               return (
                 <Fragment key={h.symbol}>
                   <tr>
-                    <td><strong>{h.symbol}</strong><span className={'pill pill-' + h.cls}>{h.cls}</span><div className="muted">{h.name}</div></td>
+                    <td>
+                      <strong>{h.symbol}</strong>
+                      <span className={'pill pill-' + h.cls}>{h.cls}</span>
+                      {h.estimated && <span className="pill pill-est" title="Added from a screenshot — exact shares & price fill in on your next holdings-report CSV upload">est.</span>}
+                      <div className="muted">{h.name}</div>
+                    </td>
                     <td>{h.theme}</td>
-                    <td className="r">{h.shares}</td>
-                    <td className="r">{h.price.toLocaleString('en-CA', { maximumFractionDigits: 2 })} {h.currency}</td>
+                    <td className="r">{h.shares == null ? '—' : h.shares}</td>
+                    <td className="r">{h.price == null ? '—' : h.price.toLocaleString('en-CA', { maximumFractionDigits: 2 }) + ' ' + h.currency}</td>
                     <td className="r">{money(h.marketValueCad)}</td>
                     <td className="r">{h.pct.toFixed(1)}%</td>
                     <td className={'r ' + (h.plNative >= 0 ? 'up' : 'down')}>{money(h.plNative)} {h.currency} <span className="muted">({pct(h.plNativePct)})</span></td>

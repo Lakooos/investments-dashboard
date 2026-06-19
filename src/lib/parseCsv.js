@@ -2,18 +2,20 @@
 //   parseHoldingsCsv  -> current positions (holdings-report-YYYY-MM-DD.csv)
 //   parseActivityCsv  -> transactions + cash/contributions/dividends (activities-export-...csv)
 
-const CORE_SYMBOLS = new Set(['VFV', 'XEQT', 'VEQT', 'ZSP', 'VUN', 'VCN', 'XGRO'])
+export const CORE_SYMBOLS = new Set(['VFV', 'XEQT', 'VEQT', 'ZSP', 'VUN', 'VCN', 'XGRO'])
 
-function themeFor(symbol, cls) {
+export function themeFor(symbol, cls) {
   const t = {
     VFV: 'Broad · US large-cap',
     XEQT: 'Broad · Global all-in-one',
     SMH: 'AI · Semiconductors',
     SOXX: 'AI · Semiconductors',
+    NVDA: 'AI · Semiconductors',
     EQIX: 'AI · Data centers',
     DLR: 'AI · Data centers',
     SPCX: 'Space',
     FPS: 'AI · Power',
+    META: 'AI · Mega-cap tech',
   }
   if (t[symbol]) return t[symbol]
   return cls === 'core' ? 'Broad · Core' : 'Satellite'
