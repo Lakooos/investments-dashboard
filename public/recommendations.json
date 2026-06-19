@@ -1,0 +1,17 @@
+{
+  "generatedAt": "",
+  "model": "",
+  "dataAsOf": "sample",
+  "health": "Upload your holdings to get started.",
+  "summary": "This is a sample dashboard with placeholder data. Use the Upload button to drop your own Wealthsimple holdings CSV — your data is stored only on this device. Then generate personalized recommendations.",
+  "sell": [],
+  "watch": [],
+  "rebalance": [],
+  "breaking": [],
+  "opportunities": [],
+  "news": [],
+  "recommendations": [
+    { "priority": "info", "title": "Add your data", "detail": "Click Upload and drop your Wealthsimple holdings-report CSV. Nothing leaves your device." }
+  ],
+  "disclaimer": "Educational only, not licensed financial advice. Sample data — not real holdings."
+}

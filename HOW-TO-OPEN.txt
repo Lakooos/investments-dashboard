@@ -1,0 +1,29 @@
+INVESTMENTS DASHBOARD — how to open it
+======================================
+
+IT'S NOW A REAL STANDALONE APP (no browser, no Edge):
+  Double-click "Investments Dashboard" on your Desktop.
+  It opens in its own window with its own icon. That's it.
+
+WHAT CHANGED:
+  - It no longer opens in Microsoft Edge. It runs as its own Electron desktop
+    app that loads the built dashboard directly.
+  - The Desktop shortcut now launches the app (electron) with the custom icon.
+
+IF YOU CHANGE THE CODE:
+  Rebuild the production files the app loads:
+      npm run build
+  (The app serves the /dist folder. Run this after editing anything in /src.)
+
+HANDY SCRIPTS (run from this folder):
+  npm run app     -> launch the desktop app
+  npm run build   -> rebuild /dist after code changes
+  npm run icon    -> regenerate build/icon.ico + icon.png from build/icon.svg
+  npm run dev     -> old browser dev server at http://localhost:5173 (optional)
+
+GOOD TO KNOW:
+  - Your data (uploads, cash, holdings) is saved locally in the app on this PC.
+    Note: because this is now a separate app from the old Edge window, you may
+    need to re-upload your CSV / re-enter holdings the first time.
+  - The recommendations panel still reads public/recommendations.json live, so
+    the AI refresh workflow keeps working without a rebuild.

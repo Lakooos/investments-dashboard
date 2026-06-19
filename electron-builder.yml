@@ -1,0 +1,22 @@
+appId: com.lucas.investments-dashboard
+productName: Investments Dashboard
+copyright: © 2026 Lucas
+directories:
+  output: C:/Users/lucas/InvDashBuild
+  buildResources: build
+files:
+  - dist/**
+  - electron/**
+  - public/recommendations.json
+  - build/icon.ico
+  - package.json
+win:
+  target: nsis
+  icon: build/icon.ico
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Investments Dashboard
+  artifactName: "Investments-Dashboard-Setup-${version}.exe"
