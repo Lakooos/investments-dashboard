@@ -5,3 +5,9 @@ release/
 .DS_Store
 Thumbs.db
 /eng.traineddata
+# Removed OCR assets — OneDrive keeps re-syncing this folder; keep it out of git
+public/tessdata/
+# Secrets — partner SnapTrade keys + Supabase service role live here, never commit
+.env
+.env.local
+.env.*.local

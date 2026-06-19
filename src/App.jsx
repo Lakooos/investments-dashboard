@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import AllocationPie from './components/AllocationPie.jsx'
-import ImportActivityModal from './components/ImportActivityModal.jsx'
+import SnapTradeSetupModal from './components/SnapTradeSetupModal.jsx'
+import { getState as snapGetState, getLivePortfolio } from './lib/snaptradeSource.js'
 import { buildSnapshot, buildPrompt, copyAndDownload } from './lib/aiBridge.js'
 import { enrich, summarize, recommend, sellOutcome, selectPinnedRules } from './lib/portfolio.js'
-import { applyImportedTrades } from './lib/importTrades.js'
 import { parseHoldingsCsv, parseActivityCsv, detectCsvKind } from './lib/parseCsv.js'
 import { loadHistory, prevEntry, computeTodayChange, recordToday, todayStr } from './lib/history.js'
 import { SEED_HOLDINGS, DEFAULT_FX, PROFILE, AS_OF } from './data/holdings.js'
@@ -53,8 +53,52 @@ export default function App() {
   const [note, setNote] = useState('')
   const [pbLevel, setPbLevel] = useState('all') // playbook level filter: all | beginner | ...
   const [pbSeed, setPbSeed] = useState(0) // bump to rotate to the next batch of tips
-  const [importOpen, setImportOpen] = useState(false) // "Paste activity screenshot" modal
+  // SnapTrade (live brokerage) state — only available when the dev backend is up
+  // (i.e. running under `npm run dev`); detected on mount via /api/snaptrade/state.
+  const [snapOn, setSnapOn] = useState(false)
+  const [setupOpen, setSetupOpen] = useState(false)
+  const [live, setLive] = useState(null) // { asOf, accountName } once we've pulled live data
+  const [liveBusy, setLiveBusy] = useState(false)
+  const [snapConfigured, setSnapConfigured] = useState(false)
   const fileRef = useRef(null)
+
+  // Pull the current portfolio straight from the brokerage and load it into the app.
+  async function refreshLive() {
+    setLiveBusy(true)
+    try {
+      const { holdings: h, cash: c, fx: f, asOf: d, accountName } = await getLivePortfolio()
+      setHoldings(h)
+      setFx(f)
+      setCashOverride(c) // brokerage cash is authoritative; overrides the CSV-derived value
+      setAsOf(d)
+      setLive({ asOf: d, accountName })
+      setNote(`🔄 Live from Wealthsimple${accountName ? ' · ' + accountName : ''} — ${h.length} holdings, cash ${money(c)} (as of ${d}).`)
+    } catch (e) {
+      setNote('⚠️ Live refresh failed: ' + (e.message || e) + '. Showing the last loaded data.')
+    } finally {
+      setLiveBusy(false)
+    }
+  }
+
+  // On load: ask the dev backend for state. Success → the SnapTrade backend is up
+  // (running under `npm run dev`), so show the controls; if an account is already
+  // linked, pull live right away. Failure (e.g. static host) → hide SnapTrade.
+  useEffect(() => {
+    snapGetState()
+      .then((s) => {
+        setSnapOn(true)
+        setSnapConfigured(!!s.hasAccount)
+        if (s.hasAccount) refreshLive()
+      })
+      .catch(() => setSnapOn(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function onSetupDone() {
+    setSetupOpen(false)
+    setSnapConfigured(true)
+    refreshLive()
+  }
 
   // Cash auto-derives from stored activity + current holdings unless manually overridden.
   const derivedCashVal = useMemo(() => (activity ? derivedCash(activity, holdings) : null), [activity, holdings])
@@ -213,22 +257,25 @@ export default function App() {
     setNote([...ok, ...errs].join(' · ') + cashNote)
   }
 
-  // Merge trades scraped from a pasted Activity screenshot. Updates holdings book
-  // values (so cash re-derives), records the transactions, and re-derives cash.
-  function onImportTrades(rows) {
-    setImportOpen(false)
-    if (!rows.length) return
-    const { holdings: h2, activity: a2, notes } = applyImportedTrades({ holdings, activity, fx }, rows)
-    setHoldings(h2)
-    setActivity(a2)
-    setCashOverride(null) // re-derive cash from the updated book values
-    setAsOf(todayStr())
-    const n = rows.length
-    setNote(
-      `✅ Imported ${n} item${n === 1 ? '' : 's'} (trades + transfers) from your screenshot — recent activity, cash, contributions & allocation updated.` +
-        (notes.length ? ' ' + notes.join(' ') : '') +
-        ' New positions show as “est.” until you upload a holdings-report CSV (which fills in exact shares & price).',
+  // Wipe ALL of the app's saved data on this device (holdings, activity, cash,
+  // FX, as-of date, and the daily price history) and restore defaults. Use this
+  // if a bad upload/screenshot ever corrupts the numbers. Clears every key with
+  // our prefix so legacy keys get swept too, then reloads to re-seed from code.
+  function resetApp() {
+    const ok = window.confirm(
+      'Reset the dashboard?\n\nThis erases ALL saved data on this device — uploaded holdings, ' +
+        'activity, cash, FX and the daily history — and restores the built-in defaults.\n\n' +
+        "This can't be undone. (You can re-upload your CSV / screenshot afterward.)",
     )
+    if (!ok) return
+    try {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('invdash'))
+        .forEach((k) => localStorage.removeItem(k))
+    } catch {
+      /* ignore private-mode / quota errors */
+    }
+    location.reload()
   }
 
   return (
@@ -237,7 +284,14 @@ export default function App() {
         <div>
           <h1>Investments Dashboard</h1>
           <p className="sub">
-            {PROFILE.name} · <span className="risk">{PROFILE.risk} risk</span> · tilted to space + AI · as of {asOf}
+            {live ? (
+              <span className="live-badge" title={'Live from Wealthsimple via SnapTrade' + (live.accountName ? ' · ' + live.accountName : '')}>
+                ● LIVE{live.accountName ? ' · ' + live.accountName : ''}
+              </span>
+            ) : (
+              PROFILE.name
+            )}{' '}
+            · <span className="risk">{PROFILE.risk} risk</span> · tilted to space + AI · as of {asOf}
           </p>
         </div>
         <div className="controls">
@@ -259,19 +313,27 @@ export default function App() {
             FX CAD/USD{' '}
             <input type="number" step="0.01" value={fx} onChange={(e) => setFx(parseFloat(e.target.value) || 0)} />
           </label>
+          {snapOn &&
+            (snapConfigured ? (
+              <button className="primary" onClick={refreshLive} disabled={liveBusy} title="Pull your current holdings, cash and FX straight from Wealthsimple">
+                {liveBusy ? '⏳ Refreshing…' : '🔄 Refresh (live)'}
+              </button>
+            ) : (
+              <button className="primary" onClick={() => setSetupOpen(true)} title="Connect Wealthsimple so the dashboard reads your live holdings — no CSVs or screenshots">
+                🔗 Connect Wealthsimple
+              </button>
+            ))}
+          {snapOn && snapConfigured && (
+            <button onClick={() => setSetupOpen(true)} title="Re-link, switch account, or update API keys">⚙️ Brokerage</button>
+          )}
           <button onClick={() => fileRef.current?.click()}>Upload CSV(s)</button>
           <input ref={fileRef} type="file" accept=".csv" multiple hidden onChange={onFiles} />
-          <button onClick={() => setImportOpen(true)} title="Paste a screenshot of your Wealthsimple Activity list to catch up trades the CSV export hasn't included yet">📋 Paste activity</button>
           <button className="primary" onClick={genRecs}>✨ Generate recommendations</button>
+          <button className="danger" onClick={resetApp} title="Erase all saved data on this device and restore defaults — use this if your numbers ever look corrupted">↺ Reset</button>
         </div>
       </header>
 
-      <ImportActivityModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onApply={onImportTrades}
-        existingTxns={activity?.transactions || []}
-      />
+      <SnapTradeSetupModal open={setupOpen} onClose={() => setSetupOpen(false)} onDone={onSetupDone} />
 
       {note && <div className="note">{note}</div>}
 
@@ -397,7 +459,6 @@ export default function App() {
                     <td>
                       <strong>{h.symbol}</strong>
                       <span className={'pill pill-' + h.cls}>{h.cls}</span>
-                      {h.estimated && <span className="pill pill-est" title="Added from a screenshot — exact shares & price fill in on your next holdings-report CSV upload">est.</span>}
                       <div className="muted">{h.name}</div>
                     </td>
                     <td>{h.theme}</td>

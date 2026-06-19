@@ -45,6 +45,10 @@ button.primary {
   background: linear-gradient(135deg, #6d3bff, #4f8cff); border-color: transparent; color: #fff; font-weight: 600;
 }
 button.primary:hover { filter: brightness(1.1); }
+button.danger {
+  background: transparent; border-color: var(--down); color: var(--down); font-weight: 600;
+}
+button.danger:hover { background: var(--down); border-color: var(--down); color: #fff; filter: none; }
 
 .tag-opus { background: linear-gradient(135deg, #6d3bff, #4f8cff); }
 .crec-meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
@@ -212,7 +216,6 @@ table.holdings { width: 100%; border-collapse: collapse; font-size: 14px; }
 .foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
 
 /* --- Paste-activity-screenshot importer --- */
-.pill-est { background: #2a2233; color: #d3a3f0; }
 
 .modal-overlay {
   position: fixed; inset: 0; z-index: 50; display: flex; align-items: center;
@@ -276,3 +279,25 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .grid { grid-template-columns: 1fr; }
   .life { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* --- SnapTrade live integration --- */
+.live-badge {
+  color: var(--up); font-weight: 700; letter-spacing: 0.3px;
+  background: #0e2a1a; border: 1px solid var(--up); border-radius: 999px;
+  padding: 1px 9px; font-size: 12px;
+}
+.setup-step { display: flex; flex-direction: column; gap: 4px; }
+.setup-fld { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 13px; color: var(--muted); }
+.setup-fld input {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  padding: 9px 11px; border-radius: 9px; font-size: 14px;
+}
+.setup-actions { display: flex; justify-content: center; padding: 14px 0; }
+.setup-accts { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.setup-accts li {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+}
+.setup-accts li.on { border-color: var(--accent); background: #15243f; }
+.setup-accts label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.setup-accts .acct-name { font-weight: 600; }
+.setup-accts .acct-meta { margin-left: auto; font-size: 12px; }
