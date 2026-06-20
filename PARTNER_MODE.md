@@ -59,5 +59,5 @@ Comment out `VITE_SNAPTRADE_MODE=partner` (or set it to anything else) and resta
 
 The Vite plugin backend only runs under `npm run dev` / `vite preview`. For a real
 deployment you'd move `server/partnerService.js` behind a small hosted API (e.g. a
-Node/Express server, a Supabase Edge Function, or Vercel/Netlify functions) and point
+Node/Express server, a Supabase Edge Function, or Vercel functions) and point
 the frontend at it. The logic is identical — same SnapTrade + Supabase calls.
