@@ -55,5 +55,11 @@ export async function getPartnerPortfolio(accountId) {
     cash: Number(d.cash) || 0,
     fx,
     accountId: d.accountId || null,
+    accountName: d.accountName || null,
+    accountType: d.accountType || null,
+    dividends: Number(d.dividends) || 0,
+    fees: Number(d.fees) || 0,
+    interest: Number(d.interest) || 0,
+    incomeUnavailable: !!d.incomeUnavailable,
   }
 }

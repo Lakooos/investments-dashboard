@@ -15,6 +15,7 @@
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY        (service role bypasses RLS)
 
 const env = (k) => process.env[k] || ''
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 
 export function isConfigured() {
   return !!(env('SNAPTRADE_CLIENT_ID') && env('SNAPTRADE_CONSUMER_KEY') && env('SUPABASE_URL') && env('SUPABASE_SERVICE_ROLE_KEY'))
@@ -157,17 +158,58 @@ async function getCadPerUsd(s) {
   return 1.4
 }
 
-// Live positions + cash + FX for one of the user's accounts (defaults to first).
+// Pick the account to show by default: the registered account (TFSA/RRSP) with the
+// MOST money, so most users land on the one they actually use. Falls back to the
+// richest open account, then any account.
+const acctTotal = (a) => Number(a.total) || 0
+function chooseDefaultAccount(accts) {
+  if (!accts || !accts.length) return null
+  const open = accts.filter((a) => {
+    const st = (a.status || '').toLowerCase()
+    return !st || st === 'open'
+  })
+  const pool = open.length ? open : accts
+  const byMoney = (list) => list.slice().sort((x, y) => acctTotal(y) - acctTotal(x))
+  const registered = pool.filter((a) => /tfsa|rrsp/i.test(`${a.type || ''} ${a.name || ''}`))
+  return registered.length ? byMoney(registered)[0] : byMoney(pool)[0]
+}
+
+// Lifetime dividends, interest and fees from the account's transaction history, so
+// the dashboard can show a true "total return" like Wealthsimple does. USD amounts
+// are converted to CAD at the current rate. Best-effort: any failure → zeros + a flag.
+async function getIncomeAndFees(s, userId, userSecret, accountId, fx) {
+  try {
+    const res = await s.accountInformation.getAccountActivities({
+      userId, userSecret, accountId, type: 'DIVIDEND,FEE,INTEREST', limit: 1000,
+    })
+    const rows = (res && res.data && (Array.isArray(res.data) ? res.data : res.data.data)) || []
+    let dividends = 0, fees = 0, interest = 0
+    for (const t of rows) {
+      const type = (t.type || '').toUpperCase()
+      const code = (t.currency && t.currency.code) || 'CAD'
+      const cad = (Number(t.amount) || 0) * (code === 'USD' ? fx : 1)
+      if (type === 'DIVIDEND') dividends += cad
+      else if (type === 'INTEREST') interest += cad
+      else if (type === 'FEE') fees += Math.abs(cad)
+    }
+    return { dividends: round2(dividends), fees: round2(fees), interest: round2(interest) }
+  } catch {
+    return { dividends: 0, fees: 0, interest: 0, incomeUnavailable: true }
+  }
+}
+
+// Live positions + cash + FX for one of the user's accounts. With no accountId it
+// defaults to the richer of the user's TFSA/RRSP (see chooseDefaultAccount).
 export async function getPortfolio(appUserId, accountId) {
   const { userId, userSecret } = await ensureSnaptradeUser(appUserId)
   const s = await sdk()
   try {
-    if (!accountId) {
-      const accts = await listAccounts(appUserId)
-      const open = accts.find((a) => (a.status || '').toLowerCase() === 'open') || accts[0]
-      if (!open) return { positions: [], cash: 0, fx: await getCadPerUsd(s), accountName: null, asOf: new Date().toISOString() }
-      accountId = open.id
+    const accts = await listAccounts(appUserId)
+    const chosen = accountId ? accts.find((a) => a.id === accountId) : chooseDefaultAccount(accts)
+    if (!chosen) {
+      return { positions: [], cash: 0, fx: await getCadPerUsd(s), accountId: null, accountName: null, accountType: null, dividends: 0, fees: 0, interest: 0, asOf: new Date().toISOString() }
     }
+    accountId = chosen.id
     const [posRes, balRes, fx] = await Promise.all([
       s.accountInformation.getUserAccountPositions({ userId, userSecret, accountId }),
       s.accountInformation.getUserAccountBalance({ userId, userSecret, accountId }),
@@ -190,7 +232,17 @@ export async function getPortfolio(appUserId, accountId) {
       const code = (b.currency && b.currency.code) || 'CAD'
       return sum + ((Number(b.cash) || 0) * (code === 'USD' ? fx : 1))
     }, 0)
-    return { positions, cash: Math.round(cash * 100) / 100, fx: Math.round(fx * 10000) / 10000, accountId, asOf: new Date().toISOString() }
+    const income = await getIncomeAndFees(s, userId, userSecret, accountId, fx)
+    return {
+      positions,
+      cash: Math.round(cash * 100) / 100,
+      fx: Math.round(fx * 1e6) / 1e6, // keep full FX precision for the exact USD readout
+      accountId,
+      accountName: chosen.name || null,
+      accountType: chosen.type || null,
+      ...income,
+      asOf: new Date().toISOString(),
+    }
   } catch (e) {
     throw niceError(e)
   }
